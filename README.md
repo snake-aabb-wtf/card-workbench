@@ -24,7 +24,17 @@ python3 run_stress.py ../furina-rolecard/furina_meta.json probes/furina_meta.pro
 探针文件格式见 `probes/furina_meta.probes.json`（含 `expect` 预期字段，供人工/审查 agent 比对判定）。
 API key 复用 `workspace/.secrets/openrouter-test-o5.key`。
 
-### ③ review/checklist.md —— 审查 agent 提示词清单
+### ③ build_card.py —— 通用构建器（源码→产物，V2 spec）
+方法论：JSON 是编译产物，人不该直接编辑 JSON——源码用 md + JSON 混合目录，编译出干净的 V2 卡。
+
+```bash
+python3 build_card.py <卡片源码目录> -o ../character-cards/xxx/card.json
+```
+
+源码目录：`card.json`（元数据）+ `description.md`（必需）+ personality/scenario/first_mes/mes_example.md（可省）+ `lorebook.json`（可省，条目字段透传）。
+已用芙宁娜卡验证：反向提取源码→编译→与原卡 15 字段零差异。
+
+### ④ review/checklist.md —— 审查 agent 提示词清单
 深度评审三件套：考据 / 性格 / 机制。沉淀自芙宁娜卡两轮评审闭环。
 
 ## 目录
@@ -34,6 +44,7 @@ workbench/
 ├── README.md
 ├── cardlint.py
 ├── run_stress.py
+├── build_card.py    # 通用构建器：源码目录 → V2 JSON
 ├── probes/          # 探针定义（每卡一份 JSON）
 ├── review/          # 审查清单
 └── tests/           # 压测产物输出
