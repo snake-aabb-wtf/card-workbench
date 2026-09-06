@@ -23,6 +23,7 @@ probes.json 格式：
 
 模拟 SillyTavern 注入：constant（蓝灯）条目全量常驻 + 命中 keys 的绿灯条目追加。
 输出：markdown 报告，逐探针 × 逐模型收对话全文 + expect 提示行。
+**增量写盘：每完成一组立即追加到报告（断气不丢已完成组）；--resume 可续跑跳过已完成组。**
 """
 import argparse
 import json
@@ -104,6 +105,8 @@ def main():
     ap.add_argument('probes')
     ap.add_argument('--models', help='逗号分隔，覆盖 probes.json 里的 models')
     ap.add_argument('--out', help='输出 md 路径，默认 tests/<card>_stress_<date>.md')
+    ap.add_argument('--resume', action='store_true',
+                    help='续跑：跳过报告里已有的探针×模型组，增量追加（进程中断后可接上）')
     args = ap.parse_args()
 
     card_data = json.loads(Path(args.card).read_text(encoding='utf-8'))['data']
@@ -116,23 +119,36 @@ def main():
         f"{Path(args.card).stem}_stress_{date.today().isoformat()}.md")
     out_path.parent.mkdir(exist_ok=True)
 
-    lines = [f"# 压测报告：{card_data.get('name', '?')}（{date.today().isoformat()}）",
-             f"模型：{', '.join(models)} · max_tokens={defaults.get('max_tokens', 8000)} · temp={defaults.get('temperature', 0.9)}"]
+    done_keys: set[str] = set()
+    if args.resume and out_path.exists():
+        import re
+        for m in re.finditer(r'^===== (.+?) =====$', out_path.read_text(encoding='utf-8'), re.M):
+            done_keys.add(m.group(1))
+        print(f'resume: {len(done_keys)} 组已完成，跳过')
+
+    header = [f"# 压测报告：{card_data.get('name', '?')}（{date.today().isoformat()}）",
+              f"模型：{', '.join(models)} · max_tokens={defaults.get('max_tokens', 8000)} · temp={defaults.get('temperature', 0.9)}"]
+    if not out_path.exists():
+        out_path.write_text('\n'.join(header), encoding='utf-8')
 
     for probe in spec['probes']:
         for model in models:
             short = model.split('/')[-1]
             key = f"{probe['id']}@{short}"
+            if key in done_keys:
+                print(f'== {key} 已有，跳过', flush=True)
+                continue
             print(f'== {key} ...', flush=True)
             try:
                 text = run_probe(card_data, model, probe, defaults)
             except Exception as e:
                 text = f'ERROR: {e}'
-            lines.append(f"\n\n===== {key} =====")
-            lines.append(f"> 预期：{probe.get('expect', '（未注明）')}\n")
-            lines.append(text)
+            # 一组一落盘：立即追加，断气不丢已完成组（与调查员纪律对齐）
+            with open(out_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n\n===== {key} =====\n")
+                f.write(f"> 预期：{probe.get('expect', '（未注明）')}\n\n")
+                f.write(text)
 
-    out_path.write_text('\n'.join(lines), encoding='utf-8')
     print(f'done -> {out_path}')
 
 
